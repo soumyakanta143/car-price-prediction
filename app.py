@@ -22,8 +22,8 @@ if not PIPE_PATH.exists() or not META_PATH.exists():
     st.warning("No trained model found. Training a new model...")
     import argparse
     args = argparse.Namespace(
-        data="data/your_dataset.csv",   # <-- keep your dataset here
-        target="Price",                 # <-- change if your target column is different
+        data="data/your_dataset.csv",   # dataset location in your repo
+        target="Price",                 # target column name
         task="auto",
         test_size=0.2,
         random_state=42
