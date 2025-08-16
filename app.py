@@ -75,9 +75,11 @@ input_data = pd.DataFrame([{
 # =============================
 
 # Auto prediction whenever inputs change
-prediction = model.predict(input_data)[0]
-
-st.markdown("### 💰 Predicted Price:")
-st.success(f"₹ {prediction:,.2f}")
+if st.button("Predict Price"):
+    prediction = model.predict(input_data)[0]
+    st.markdown("### 💰 Predicted Price:")
+    st.success(f"₹ {prediction:,.2f}")
+else:
+    st.empty()
 
 
