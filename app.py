@@ -6,7 +6,7 @@ import streamlit as st
 from pathlib import Path
 
 # import training script
-import train
+
 
 st.set_page_config(page_title="Car Price Predictor", page_icon="🚗", layout="centered")
 
@@ -72,3 +72,4 @@ if st.button("Predict"):
             st.success(f"Predicted price: **{pred:,.0f}**")
     except Exception as e:
         st.error(f"Prediction failed: {e}")
+
