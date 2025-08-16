@@ -1,68 +1,74 @@
-import streamlit as st
+import json
+import joblib
+import numpy as np
 import pandas as pd
-import pickle
+import streamlit as st
+from pathlib import Path
 
-# Load trained model
-with open("car_price_model.pkl", "rb") as f:
-    model = pickle.load(f)
+# import training script
+import train
 
-# Load encoders dictionary
-with open("car_price_encoders.pkl", "rb") as f:
-    encoders = pickle.load(f)
+st.set_page_config(page_title="Car Price Predictor", page_icon="🚗", layout="centered")
 
-# Load the dataset to get real column values
-df = pd.read_csv("Car_Price_Cleaned.csv")
+MODELS_DIR = Path("models")
+PIPE_PATH = MODELS_DIR / "pipeline.pkl"
+META_PATH = MODELS_DIR / "metadata.json"
 
-st.set_page_config(page_title="Car Price Prediction", layout="wide")
+st.title("🚗 Car Price Predictor")
+st.caption("Automatically trains if no model is found.")
 
-st.title("🚗 Car Price Prediction App")
-st.write("Enter the details of your car to predict its price:")
+# --- Train model if missing ---
+if not PIPE_PATH.exists() or not META_PATH.exists():
+    st.warning("No trained model found. Training a new model...")
+    import argparse
+    args = argparse.Namespace(
+        data="data/your_dataset.csv",   # <-- keep your dataset here
+        target="Price",                 # <-- change if your target column is different
+        task="auto",
+        test_size=0.2,
+        random_state=42
+    )
+    train.main(args)   # runs training and saves model/metadata
 
-# Layout: 3 columns for inputs
-col1, col2, col3 = st.columns(3)
+# --- Load pipeline + metadata ---
+pipe = joblib.load(PIPE_PATH)
+with open(META_PATH, "r", encoding="utf-8") as f:
+    meta = json.load(f)
 
-# Get unique values from dataset for dropdowns
-makes = df['Make'].unique().tolist()
-models = df['Model'].unique().tolist()
-fuel_types = df['Fuel_Type'].unique().tolist()
-transmissions = df['Transmission'].unique().tolist()
+st.sidebar.header("Model Info")
+st.sidebar.write(f"**Task:** {meta['task']}")
+st.sidebar.json(meta.get("metrics", {}))
 
-with col1:
-    make = st.selectbox("Make", makes)
-    engine_size = st.number_input("Engine Size (Litres)", min_value=0.5, max_value=6.0, step=0.1)
-    car_age = st.number_input("Car Age (years)", min_value=0, max_value=30, step=1)
+st.subheader("Enter feature values")
 
-with col2:
-    model_name = st.selectbox("Model", models)
-    mileage = st.number_input("Mileage (in kms)", min_value=0, max_value=300000, step=1000)
+inputs = {}
+# numeric fields
+for col in meta["numeric_columns"]:
+    inputs[col] = st.number_input(f"{col}", value=0.0, step=1.0)
 
-with col3:
-    fuel_type = st.selectbox("Fuel Type", fuel_types)
-    transmission = st.selectbox("Transmission", transmissions)
+# categorical fields
+for col in meta["categorical_columns"]:
+    choices = meta["categorical_choices"].get(col, [])
+    if choices:
+        inputs[col] = st.selectbox(f"{col}", options=choices)
+    else:
+        inputs[col] = st.text_input(f"{col}", value="")
 
-# Feature engineering
-mileage_per_year = mileage / car_age if car_age > 0 else mileage
+# Build single-row dataframe
+row = {}
+for col in meta["numeric_columns"]:
+    row[col] = float(inputs[col]) if inputs[col] is not None else np.nan
+for col in meta["categorical_columns"]:
+    row[col] = str(inputs[col]) if inputs[col] is not None else ""
 
-# Encode selections using saved encoders
-make_encoded = encoders["Make"].transform([make])[0]
-model_encoded = encoders["Model"].transform([model_name])[0]
-fuel_encoded = encoders["Fuel_Type"].transform([fuel_type])[0]
-trans_encoded = encoders["Transmission"].transform([transmission])[0]
+X_df = pd.DataFrame([row])
 
-# Prepare input data for prediction
-input_data = pd.DataFrame({
-    "Car_Age": [car_age],
-    "Mileage": [mileage],
-    "Mileage_per_Year": [mileage_per_year],
-    "Fuel_Type": [fuel_encoded],
-    "Transmission": [trans_encoded],
-    "Engine_Size": [engine_size],
-    "Make": [make_encoded],
-    "Model": [model_encoded]
-})
-
-# Prediction
-if st.button("Predict Price"):
-    prediction = model.predict(input_data)
-    st.markdown("### 💰 Predicted Price:")
-    st.success(f"₹ {prediction[0]:,.2f}")
+if st.button("Predict"):
+    try:
+        pred = pipe.predict(X_df)[0]
+        if meta["task"] == "classification":
+            st.success(f"Predicted class: **{pred}**")
+        else:
+            st.success(f"Predicted price: **{pred:,.0f}**")
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
