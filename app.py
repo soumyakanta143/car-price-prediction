@@ -1,50 +1,61 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import pickle
 
-# Load model & encoders
+# Load trained model
 with open("car_price_model.pkl", "rb") as f:
     model = pickle.load(f)
 
+# Load encoders dictionary
 with open("car_price_encoders.pkl", "rb") as f:
     encoders = pickle.load(f)
 
-st.set_page_config(page_title="Car Price Predictor 🚗", page_icon="🚗", layout="centered")
+# Load dataset to fetch dropdown options
+df = pd.read_csv("Car_Price_Cleaned.csv")
 
+st.set_page_config(page_title="Car Price Prediction", layout="wide")
 st.title("🚗 Car Price Prediction App")
-st.write("Enter the details of the car to predict its price")
+st.write("Fill in the details of the car to estimate its price:")
 
-# Input fields (update according to your dataset)
-make = st.selectbox("Make", encoders["Make"].classes_)
-model_name = st.selectbox("Model", encoders["Model"].classes_)
-engine_size = st.number_input("Engine Size (L)", min_value=0.0, step=0.1)
-mileage = st.number_input("Mileage", min_value=0, step=1000)
-fuel_type = st.selectbox("Fuel Type", encoders["Fuel_Type"].classes_)
-transmission = st.selectbox("Transmission", encoders["Transmission"].classes_)
-car_age = st.number_input("Car Age (years)", min_value=0, step=1)
-mileage_per_year = st.number_input("Mileage per Year", min_value=0, step=500)
+# Input layout
+col1, col2, col3 = st.columns(3)
 
-# Prepare input row
+with col1:
+    make = st.selectbox("Make", df["Make"].unique().tolist())
+    engine_size = st.number_input("Engine Size (Litres)", min_value=0.5, max_value=6.0, step=0.1)
+    car_age = st.number_input("Car Age (years)", min_value=0, max_value=30, step=1)
+
+with col2:
+    model_name = st.selectbox("Model", df["Model"].unique().tolist())
+    mileage = st.number_input("Mileage (kms)", min_value=0, max_value=300000, step=1000)
+
+with col3:
+    fuel_type = st.selectbox("Fuel Type", df["Fuel_Type"].unique().tolist())
+    transmission = st.selectbox("Transmission", df["Transmission"].unique().tolist())
+
+# Feature engineering
+mileage_per_year = mileage / car_age if car_age > 0 else mileage
+
+# Encode categorical features
+make_encoded = encoders["Make"].transform([make])[0]
+model_encoded = encoders["Model"].transform([model_name])[0]
+fuel_encoded = encoders["Fuel_Type"].transform([fuel_type])[0]
+trans_encoded = encoders["Transmission"].transform([transmission])[0]
+
+# Match training feature order
 input_data = pd.DataFrame([{
-    "Make": make,
-    "Model": model_name,
+    "Make": make_encoded,
+    "Model": model_encoded,
     "Engine_Size": engine_size,
     "Mileage": mileage,
-    "Fuel_Type": fuel_type,
-    "Transmission": transmission,
+    "Fuel_Type": fuel_encoded,
+    "Transmission": trans_encoded,
     "Car_Age": car_age,
     "Mileage_per_Year": mileage_per_year
 }])
 
-# Encode categorical features
-for col in ["Make", "Model", "Fuel_Type", "Transmission"]:
-    input_data[col] = encoders[col].transform(input_data[col])
-
 # Prediction
 if st.button("Predict Price"):
-    try:
-        prediction = model.predict(input_data)[0]
-        st.success(f"💰 Estimated Car Price: **${prediction:,.2f}**")
-    except Exception as e:
-        st.error(f"Prediction failed: {e}")
+    prediction = model.predict(input_data)[0]
+    st.markdown("### 💰 Predicted Price:")
+    st.success(f"₹ {prediction:,.2f}")
